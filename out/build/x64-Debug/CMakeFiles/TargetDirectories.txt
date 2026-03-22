@@ -1,0 +1,3 @@
+D:/Projects/Xonix/out/build/x64-Debug/CMakeFiles/xonix.dir
+D:/Projects/Xonix/out/build/x64-Debug/CMakeFiles/edit_cache.dir
+D:/Projects/Xonix/out/build/x64-Debug/CMakeFiles/rebuild_cache.dir
