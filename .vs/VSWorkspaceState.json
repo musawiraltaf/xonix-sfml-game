@@ -6,10 +6,8 @@
     ]
   },
   "ExpandedNodes": [
-    "",
-    "\\out",
-    "\\out\\build"
+    ""
   ],
-  "SelectedNode": "\\LoginState.cpp",
+  "SelectedNode": "\\out",
   "PreviewInSolutionExplorer": false
 }

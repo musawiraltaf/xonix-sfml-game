@@ -8,17 +8,19 @@ class Game
 {
 public:
     Game();
-    ~Game();                                 
+    ~Game();
 
     void run();
-    void changeState(State* newState);        // manual pointer-based state switching
+    void changeState(State* newState);
 
     sf::RenderWindow& getWindow();
     GameData& getData() { return data; }
 
 private:
-    sf::RenderWindow window;
-    GameData         data;
+    void applyPendingStateChange();
 
-    State* currentState;                      // raw pointer since we aren’t using <memory>
+    sf::RenderWindow window;
+    GameData data;
+    State* currentState;
+    State* pendingState;
 };

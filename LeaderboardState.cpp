@@ -4,18 +4,13 @@
 #include "MainMenuState.h"
 #include "GameLogic.h"     //  for N, M, ts
 #include <sstream>         // for std::ostringstream
+#include "UIStyle.h"
 
 LeaderboardState::LeaderboardState(Game& game, GameData& data)
     : State(game, data), rowCount(0)
 {
-    // Use your existing font
-    if (!font.loadFromFile("ariblk.ttf"))
-    {
-        // if it fails, we just won’t see text
-    }
-
     // ----- Title -----
-    title.setFont(font);
+    title.setFont(ui::headingFont());
     title.setCharacterSize(32);
     title.setFillColor(sf::Color::White);
     title.setString("Leaderboard (Top 10)");
@@ -29,7 +24,7 @@ LeaderboardState::LeaderboardState(Game& game, GameData& data)
     );
 
     // ----- Hint text -----
-    info.setFont(font);
+    info.setFont(ui::bodyFont());
     info.setCharacterSize(18);
     info.setFillColor(sf::Color(200, 200, 200));
     info.setString("Press ESC to return to Main Menu");
@@ -51,7 +46,7 @@ LeaderboardState::LeaderboardState(Game& game, GameData& data)
     for (int i = 0; i < count; ++i)
     {
         sf::Text& t = rows[i];
-        t.setFont(font);
+        t.setFont(ui::bodyFont());
         t.setCharacterSize(20);
         t.setFillColor(sf::Color::White);
 
@@ -90,16 +85,21 @@ void LeaderboardState::handleEvent(sf::Event& event)
 
 void LeaderboardState::update(float /*dt*/)
 {
-    // nothing animated yet
 }
 
 void LeaderboardState::render(sf::RenderWindow& window)
 {
-    window.draw(title);
-    window.draw(info);
+    ui::Palette palette = ui::getPalette(data.inventory ? data.inventory->getCurrentThemeID() : 1);
+    ui::drawBackdrop(window, palette, 0.f);
+    ui::drawPanel(window, sf::FloatRect(34.f, 18.f, 652.f, 404.f), palette, true);
+    ui::drawHeader(window, title, &info, palette);
 
     for (int i = 0; i < rowCount; ++i)
     {
+        if (i == 0) rows[i].setFillColor(palette.warning);
+        else if (i == 1) rows[i].setFillColor(ui::brighten(palette.textSecondary, 20));
+        else if (i == 2) rows[i].setFillColor(ui::brighten(palette.accentSoft, 18));
+        else rows[i].setFillColor(palette.textPrimary);
         window.draw(rows[i]);
     }
 }

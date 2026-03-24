@@ -20,6 +20,7 @@ public:
     void clear();
     bool isEmpty() const;
     bool canCreateMatch() const;
+    bool containsPlayer(Player* player) const;
 
     void push(Player* player, int priority);
     bool popTopTwo(MMEntry& a, MMEntry& b);

@@ -17,13 +17,14 @@ public:
     void render(sf::RenderWindow& window) override;
 
 private:
-    // UI
-    sf::Font font;
+    sf::Font font; // kept for compatibility; static UI fonts are used instead.
 
     sf::Text titleText;
     sf::Text infoText;
     sf::Text queueText;
     sf::Text matchText;
+    sf::Text bracketText;
+    sf::Text legendText;
 
     sf::RectangleShape backButton;
     sf::Text           backLabel;
@@ -31,20 +32,20 @@ private:
     sf::RectangleShape joinButton;
     sf::Text           joinLabel;
 
+    sf::RectangleShape addButton;
+    sf::Text           addLabel;
+
     sf::RectangleShape startButton;
     sf::Text           startLabel;
 
-    sf::RectangleShape modeButtons[3];   // 4 / 6 / 8
+    sf::RectangleShape modeButtons[3];
     sf::Text           modeLabels[3];
 
-    int  playerTarget;      // 4, 6, or 8
-    bool currentInQueue;    // has currentPlayer been added already?
+    int  playerTarget;
+    int  hoveredIndex;
 
-    // Helpers
-    bool isMouseOver(const sf::RectangleShape& rect,
-        const sf::Vector2f& point) const;
-
+    bool isMouseOver(const sf::RectangleShape& rect, const sf::Vector2f& point) const;
     void handleClickAt(const sf::Vector2f& point);
-
+    void startTournamentFromQueue();
     void rebuildQueueAndMatches();
 };

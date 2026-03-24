@@ -16,7 +16,10 @@ private:
     sf::Font font;
 
     sf::Text title;
-    sf::Text body;
+    sf::Text leftTitle;
+    sf::Text leftBody;
+    sf::Text rightTitle;
+    sf::Text rightBody;
     sf::Text helper;
 
     void rebuildText();

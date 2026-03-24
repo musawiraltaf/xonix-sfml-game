@@ -1,112 +1,80 @@
 #ifndef INVENTORY_H
 #define INVENTORY_H
 
-#include <iostream>
 #include <string>
-#include <fstream>
 
-using namespace std;
-
-// ---------------------------
-// THEME STRUCTURE
-// ---------------------------
 struct Theme {
     int themeID;
-    string themeName;
-    string description;
-    string colorCode;  // For visual representation (you can map this to SFML colors if you want)
+    std::string themeName;
+    std::string description;
+    std::string colorCode;
 
-    Theme()
-        : themeID(0), themeName(""), description(""), colorCode("") {
-    }
-
-    Theme(int id, const string& name, const string& desc, const string& color)
-        : themeID(id), themeName(name), description(desc), colorCode(color) {
-    }
+    Theme() : themeID(0), themeName(), description(), colorCode() {}
+    Theme(int id, const std::string& name, const std::string& desc, const std::string& color)
+        : themeID(id), themeName(name), description(desc), colorCode(color) {}
 };
 
-// ---------------------------
-// AVL TREE NODE
-// ---------------------------
 struct AVLNode {
     Theme theme;
     AVLNode* left;
     AVLNode* right;
     int height;
 
-    AVLNode(const Theme& t)
-        : theme(t), left(nullptr), right(nullptr), height(1) {
-    }
+    explicit AVLNode(const Theme& t) : theme(t), left(nullptr), right(nullptr), height(1) {}
 };
 
-// ---------------------------
-// AVL TREE CLASS
-// ---------------------------
 class InventoryAVL {
 private:
     AVLNode* root;
 
-    // AVL Helper functions
-    int getHeight(AVLNode* node);
-    int getBalanceFactor(AVLNode* node);
+    int getHeight(AVLNode* node) const;
+    int getBalanceFactor(AVLNode* node) const;
     AVLNode* rotateRight(AVLNode* y);
     AVLNode* rotateLeft(AVLNode* x);
     AVLNode* balanceNode(AVLNode* node);
 
-    // Recursive operations
     AVLNode* insertRecursive(AVLNode* node, const Theme& theme);
-    AVLNode* searchByIDRecursive(AVLNode* node, int themeID);
-    AVLNode* searchByNameRecursive(AVLNode* node, const string& themeName);
-    void inOrderTraversalRecursive(AVLNode* node, Theme* arr, int& index);
+    AVLNode* searchByIDRecursive(AVLNode* node, int themeID) const;
+    AVLNode* searchByNameRecursive(AVLNode* node, const std::string& themeName) const;
+    void inOrderTraversalRecursive(AVLNode* node, Theme* arr, int& index) const;
     void clearTreeRecursive(AVLNode* node);
 
 public:
     InventoryAVL();
     ~InventoryAVL();
 
-    // Core AVL operations
-    void insertTheme(const Theme& theme);
-    Theme* searchByID(int themeID);
-    Theme* searchByName(const string& themeName);
-    void displayAllThemes();
-    int getThemeCount();
-    void loadDefaultThemes();
+    InventoryAVL(const InventoryAVL&) = delete;
+    InventoryAVL& operator=(const InventoryAVL&) = delete;
 
-    // Utility functions
-    void inOrderTraversal(Theme* arr, int& count);
-    bool isEmpty();
+    void insertTheme(const Theme& theme);
+    Theme* searchByID(int themeID) const;
+    Theme* searchByName(const std::string& themeName) const;
+    int getThemeCount() const;
+    void loadDefaultThemes();
+    void inOrderTraversal(Theme* arr, int& count) const;
+    bool isEmpty() const;
 };
 
-// ---------------------------
-// INVENTORY MANAGER CLASS
-// ---------------------------
 class InventoryManager {
 private:
     InventoryAVL themeTree;
     int currentThemeID;
-    string userProfileFile;
+    std::string userProfileFile;
 
 public:
     InventoryManager();
 
-    // Theme management
     void initializeThemes();
-    void displayAvailableThemes();
     bool applyTheme(int themeID);
-    bool applyThemeByName(const string& themeName);
-    void showCurrentTheme();
+    bool applyThemeByName(const std::string& themeName);
+    void saveThemePreference(const std::string& username, int themeID);
+    int loadThemePreference(const std::string& username);
 
-    // Profile management
-    void saveThemePreference(const string& username, int themeID);
-    int loadThemePreference(const string& username);
-
-    // Search functionality
-    void searchThemeByID();
-    void searchThemeByName();
-
-    // Get current theme info
     int getCurrentThemeID() const { return currentThemeID; }
-    string getCurrentThemeName();
+    std::string getCurrentThemeName() const;
+    const Theme* getCurrentTheme() const;
+    const Theme* getThemeByID(int themeID) const;
+    void getAllThemes(Theme* arr, int& count) const;
 };
 
-#endif // INVENTORY_H
+#endif

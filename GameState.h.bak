@@ -1,0 +1,83 @@
+#pragma once
+
+#include "State.h"
+#include <SFML/Graphics.hpp>
+#include "Enemy.h"
+#include "GameLogic.h"
+#include "Player.h"
+#include "SaveGame.h"
+
+class GameState : public State
+{
+public:
+    GameState(Game& game, GameData& data, int mode, const SaveGameRecord* loadedRecord = nullptr);
+
+    void handleEvent(sf::Event& event) override;
+    void update(float dt) override;
+    void render(sf::RenderWindow& window) override;
+
+private:
+    int gameMode;
+    Player* p1;
+    Player* p2;
+
+    int x1, y1, dx1, dy1;
+    int x2, y2, dx2, dy2;
+
+    bool p1Alive;
+    bool p2Alive;
+    bool p1HasTrail;
+    bool p2HasTrail;
+
+    Enemy enemies[10];
+    int enemyCount;
+    int level;
+    int targetCapturePercent;
+
+    bool gameRunning;
+    float timer;
+    float delay;
+    float gameTime;
+
+    bool freezeActive;
+    float freezeTimer;
+    int frozenPlayer;
+
+    sf::Font font;
+    sf::Text p1Hud;
+    sf::Text p2Hud;
+    sf::Text timerText;
+    sf::Text statusText;
+
+    sf::Texture enemyTexture;
+    bool enemyTextureLoaded;
+    sf::Sprite enemySprite;
+    float statusTimer;
+
+    void configureDifficulty();
+    void resetBoard(bool preserveProgress = false);
+    void applyLoadedState(const SaveGameRecord& record);
+    void updateHud();
+    void setStatusMessage(const std::string& message, const sf::Color& color = sf::Color::White);
+
+    void handlePlayerInput();
+    void activatePowerUp(Player* player, int playerCode);
+    void saveCurrentGame();
+
+    void stepSimulation();
+    void movePlayers();
+    void moveEnemies();
+    void markTrails();
+
+    void handleRegionClosureIfNeeded();
+    void applyRegionClosure(bool p1Closed, bool p2Closed);
+    void awardTilesToPlayer(Player* player, int tiles);
+
+    void checkPlayerCollisions();
+    void checkEnemyTrailCollisions();
+    void checkEnemyPlayerCollisions();
+    void checkGameEnd();
+
+    int calculateCapturedPercent() const;
+    void maybeAdvanceLevel();
+};

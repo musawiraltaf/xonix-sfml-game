@@ -1,4 +1,3 @@
-// MainMenuState.h
 #pragma once
 
 #include "State.h"
@@ -7,7 +6,7 @@
 struct MenuButton
 {
     sf::RectangleShape box;
-    sf::Text           label;
+    sf::Text label;
 };
 
 class MainMenuState : public State
@@ -15,12 +14,16 @@ class MainMenuState : public State
 public:
     MainMenuState(Game& game, GameData& data);
 
-    virtual void handleEvent(sf::Event& event) override;
-    virtual void update(float dt) override;
-    virtual void render(sf::RenderWindow& window) override;
+    void handleEvent(sf::Event& event) override;
+    void update(float dt) override;
+    void render(sf::RenderWindow& window) override;
 
 private:
     sf::Font font;
+    sf::Text titleText;
+    sf::Text subtitleText;
+    sf::Text footerText;
+    float animTime;
 
     static const int BUTTON_COUNT = 8;
     MenuButton buttons[BUTTON_COUNT];

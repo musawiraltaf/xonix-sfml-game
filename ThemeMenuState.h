@@ -3,7 +3,6 @@
 #include "State.h"
 #include <SFML/Graphics.hpp>
 
-// Simple menu to choose a theme (inventory) using number keys.
 class ThemeMenuState : public State
 {
 public:
@@ -14,8 +13,21 @@ public:
     void render(sf::RenderWindow& window) override;
 
 private:
+    static const int MAX_THEME_CARDS = 10;
+
     sf::Font font;
     sf::Text titleText;
-    sf::Text themeListText;
     sf::Text helperText;
+    sf::Text statusText;
+    float animTime;
+
+    sf::RectangleShape cards[MAX_THEME_CARDS];
+    sf::Text cardTitles[MAX_THEME_CARDS];
+    sf::Text cardDescriptions[MAX_THEME_CARDS];
+    int themeIDs[MAX_THEME_CARDS];
+    int themeCount;
+    int hoveredCard;
+
+    void rebuildCards();
+    void applyThemeByIndex(int index);
 };

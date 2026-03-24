@@ -6,7 +6,7 @@
 struct MPButton
 {
     sf::RectangleShape box;
-    sf::Text           label;
+    sf::Text label;
 };
 
 class MultiplayerMenuState : public State
@@ -20,6 +20,10 @@ public:
 
 private:
     sf::Font font;
+    sf::Text titleText;
+    sf::Text subtitleText;
+    sf::Text helperText;
+    float animTime;
 
     static const int BUTTON_COUNT = 3;
     MPButton buttons[BUTTON_COUNT];

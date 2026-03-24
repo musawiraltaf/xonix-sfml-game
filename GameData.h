@@ -1,31 +1,51 @@
 #pragma once
+
+#include <string>
 #include "Leaderboard.h"
-#include "MatchmakingQueue.h"   
+#include "MatchmakingQueue.h"
 #include "Player.h"
-#include "Inventory.h" 
+#include "Inventory.h"
+#include "FriendsManager.h"
 
 const int MAX_PLAYERS = 100;
 
 struct GameData
 {
-    // All registered users (loaded from file)
     Player users[MAX_PLAYERS];
-    int    userCount = 0;
+    int userCount;
 
-    // "Active" players for current game/session
-    int     playerCount = 0;   // 1 for single player, 2 for local co-op, etc.
-    Player* currentPlayer = nullptr; // main logged-in player
-    Player* coopPlayer = nullptr; // second player in co-op (optional)
+    int playerCount;
+    Player* sessionPlayer;
+    Player* currentPlayer;
+    Player* coopPlayer;
 
-    int     highScore = 0;
+    int highScore;
+    int difficulty;
+
     Leaderboard leaderboard;
     MatchmakingQueue matchQueue;
-    bool matchmakingActive = false;    // we’re running a series of ranked matches
-    Player* lastWinner = nullptr;  // winner of the most recent match
+    bool matchmakingActive;
+    Player* lastWinner;
 
-    // --- NEW: room-based matchmaking session ---
-    Player* roomPlayers[8];   // we only allow up to 8 as per project
-    int     roomPlayerTarget; // 4, 6, or 8
-    int     roomPlayerCount;  // how many have logged in so far
-    InventoryManager inventory;
+    Player* roomPlayers[8];
+    Player* roomWinners[8];
+    int roomPlayerTarget;
+    int roomPlayerCount;
+    int roomWinnerCount;
+    int roomCurrentMatchStart;
+
+    InventoryManager* inventory;
+    FriendsManager friends;
+
+    GameData()
+        : userCount(0), playerCount(0), sessionPlayer(nullptr), currentPlayer(nullptr), coopPlayer(nullptr),
+          highScore(0), difficulty(1), matchmakingActive(false), lastWinner(nullptr),
+          roomPlayerTarget(0), roomPlayerCount(0), roomWinnerCount(0), roomCurrentMatchStart(0), inventory(nullptr)
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            roomPlayers[i] = nullptr;
+            roomWinners[i] = nullptr;
+        }
+    }
 };

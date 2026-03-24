@@ -1,157 +1,343 @@
-﻿#include "GameState.h"
+#include "GameState.h"
 #include "Game.h"
 #include "GameData.h"
-#include "GameLogic.h"
 #include "SinglePlayerMenuState.h"
 #include "MultiplayerMenuState.h"
 #include "MatchResultState.h"
+#include "UserDataIO.h"
+#include "UIStyle.h"
+
 #include <sstream>
+#include <ctime>
+#include <cmath>
 
 static const int TILE_EMPTY = 0;
 static const int TILE_FILLED = 1;
 static const int TILE_P1_TRAIL = 2;
 static const int TILE_P2_TRAIL = 3;
 
-// Clamp a grid position (gx, gy) into valid range [0..N-1], [0..M-1]
-static inline void clampGridPos(int& gx, int& gy)
+namespace
 {
-    if (gx < 0)       gx = 0;
-    else if (gx > N - 1) gx = N - 1;
+    struct ThemePalette
+    {
+        sf::Color background;
+        sf::Color filled;
+        sf::Color trail1;
+        sf::Color trail2;
+        sf::Color player1;
+        sf::Color player2;
+        sf::Color enemy;
+    };
 
-    if (gy < 0)       gy = 0;
-    else if (gy > M - 1) gy = M - 1;
+    ThemePalette getPalette(int themeID)
+    {
+        switch (themeID)
+        {
+        case 2: return { sf::Color(15, 15, 25), sf::Color(80, 80, 90), sf::Color(0, 220, 255), sf::Color(255, 180, 0), sf::Color(0, 220, 255), sf::Color(255, 180, 0), sf::Color(255, 255, 255) };
+        case 3: return { sf::Color(10, 30, 50), sf::Color(70, 140, 190), sf::Color(0, 210, 255), sf::Color(255, 240, 130), sf::Color(255, 240, 130), sf::Color(0, 255, 200), sf::Color(255, 255, 255) };
+        case 4: return { sf::Color(25, 35, 20), sf::Color(85, 120, 70), sf::Color(180, 230, 100), sf::Color(140, 180, 255), sf::Color(255, 220, 120), sf::Color(120, 220, 255), sf::Color(255, 255, 255) };
+        case 5: return { sf::Color(40, 15, 35), sf::Color(160, 90, 110), sf::Color(255, 200, 100), sf::Color(180, 120, 255), sf::Color(255, 200, 100), sf::Color(180, 120, 255), sf::Color(255, 255, 255) };
+        case 6: return { sf::Color(15, 15, 15), sf::Color(80, 60, 90), sf::Color(255, 0, 170), sf::Color(0, 255, 170), sf::Color(255, 255, 0), sf::Color(0, 255, 255), sf::Color(255, 255, 255) };
+        case 7: return { sf::Color(30, 20, 45), sf::Color(155, 90, 170), sf::Color(255, 210, 80), sf::Color(255, 90, 160), sf::Color(255, 210, 80), sf::Color(255, 90, 160), sf::Color(255, 255, 255) };
+        case 8: return { sf::Color(20, 20, 20), sf::Color(120, 120, 120), sf::Color(255, 255, 255), sf::Color(180, 180, 180), sf::Color(255, 255, 255), sf::Color(210, 210, 210), sf::Color(255, 255, 255) };
+        case 9: return { sf::Color(35, 10, 10), sf::Color(150, 50, 30), sf::Color(255, 210, 0), sf::Color(255, 120, 0), sf::Color(255, 230, 120), sf::Color(255, 150, 60), sf::Color(255, 255, 255) };
+        case 10:return { sf::Color(15, 30, 45), sf::Color(160, 210, 255), sf::Color(255, 255, 255), sf::Color(100, 190, 255), sf::Color(255, 255, 255), sf::Color(160, 230, 255), sf::Color(255, 255, 255) };
+        default:return { sf::Color(0, 0, 0), sf::Color(220, 220, 220), sf::Color::Yellow, sf::Color::Cyan, sf::Color::Yellow, sf::Color::Green, sf::Color::Red };
+        }
+    }
+
+    void clampPos(int& value, int max)
+    {
+        if (value < 0) value = 0;
+        if (value >= max) value = max - 1;
+    }
 }
 
-GameState::GameState(Game& game, GameData& data, int mode)
-    : State(game, data)
-    , gameMode(mode)
-    , p1(nullptr)
-    , p2(nullptr)
-    , enemyCount(4)
-    , gameRunning(true)
-    , timer(0.f)
-    , delay(0.04f)
-    , gameTime(0.f)
-    , freezeActive(false)
-    , freezeTimer(0.f)
-    , frozenPlayer(0)
+GameState::GameState(Game& game, GameData& data, int mode, const SaveGameRecord* loadedRecord)
+    : State(game, data), gameMode(mode), p1(data.currentPlayer), p2(nullptr),
+      x1(10), y1(0), dx1(0), dy1(0), x2(N - 11), y2(0), dx2(0), dy2(0),
+      p1Alive(true), p2Alive(false), p1HasTrail(false), p2HasTrail(false),
+      enemyCount(4), level(1), targetCapturePercent(75), gameRunning(true),
+      timer(0.f), delay(0.04f), gameTime(0.f), freezeActive(false), freezeTimer(0.f), frozenPlayer(0),
+      enemyTextureLoaded(false), statusTimer(0.f), enemyMoveSteps(1)
 {
-    p1 = data.currentPlayer;
     if (gameMode == 2)
         p2 = data.coopPlayer;
 
-    p1Alive = (p1 != nullptr);
-    p2Alive = (gameMode == 2 && p2 != nullptr);
+    enemyTextureLoaded = enemyTexture.loadFromFile("images/enemy.png");
+    if (enemyTextureLoaded)
+    {
+        enemySprite.setTexture(enemyTexture);
+        enemySprite.setOrigin(
+            enemySprite.getLocalBounds().width / 2.f,
+            enemySprite.getLocalBounds().height / 2.f
+        );
+    }
 
-    font.loadFromFile("ariblk.ttf");
+    p1Hud.setFont(ui::bodyFont());
+    p1Hud.setCharacterSize(16);
+    p1Hud.setPosition(10.f, 6.f);
 
-    p1Hud.setFont(font);
-    p1Hud.setCharacterSize(18);
-    p1Hud.setFillColor(sf::Color::Yellow);
-    p1Hud.setPosition(10.f, 5.f);
+    p2Hud.setFont(ui::bodyFont());
+    p2Hud.setCharacterSize(16);
+    p2Hud.setPosition(10.f, 24.f);
 
-    p2Hud.setFont(font);
-    p2Hud.setCharacterSize(18);
-    p2Hud.setFillColor(sf::Color::Cyan);
+    timerText.setFont(ui::bodyFont());
+    timerText.setCharacterSize(16);
+    timerText.setPosition(10.f, 42.f);
 
-    timerText.setFont(font);
-    timerText.setCharacterSize(18);
-    timerText.setFillColor(sf::Color::White);
-    timerText.setPosition(10.f, 30.f);
+    statusText.setFont(ui::bodyFont());
+    statusText.setCharacterSize(16);
+    statusText.setPosition(10.f, static_cast<float>(M * ts) - 24.f);
 
-    gameOverText.setFont(font);
-    gameOverText.setCharacterSize(24);
-    gameOverText.setFillColor(sf::Color::White);
-    gameOverText.setPosition(100.f, 200.f);
+    if (loadedRecord)
+        applyLoadedState(*loadedRecord);
+    else
+    {
+        configureDifficulty();
+        resetBoard(false);
+    }
 
-    tileTexture.loadFromFile("images/tiles.png");
-    enemyTexture.loadFromFile("images/enemy.png");
-
-    tileSprite.setTexture(tileTexture);
-    enemySprite.setTexture(enemyTexture);
-    enemySprite.setOrigin(
-        enemySprite.getLocalBounds().width / 2.f,
-        enemySprite.getLocalBounds().height / 2.f
-    );
-
-    resetBoard();
     updateHud();
 }
 
-/* ====================== SAFE RESET BOARD ======================== */
+void GameState::configureDifficulty()
+{
+    delay = 0.04f;
+    enemyMoveSteps = 1;
 
-void GameState::resetBoard()
+    if (data.difficulty == 0)
+    {
+        enemyCount = 3;
+        targetCapturePercent = 60;
+        enemyMoveSteps = 1;
+    }
+    else if (data.difficulty == 2)
+    {
+        enemyCount = 5;
+        targetCapturePercent = 78;
+        enemyMoveSteps = 2;
+    }
+    else
+    {
+        enemyCount = 4;
+        targetCapturePercent = 70;
+        enemyMoveSteps = 1;
+    }
+}
+
+void GameState::resetBoard(bool preserveProgress)
 {
     for (int y = 0; y < M; ++y)
         for (int x = 0; x < N; ++x)
             grid[y][x] = TILE_EMPTY;
 
-    for (int i = 0; i < N; ++i)
-        grid[0][i] = grid[M - 1][i] = TILE_FILLED;
-
-    for (int i = 0; i < M; ++i)
-        grid[i][0] = grid[i][N - 1] = TILE_FILLED;
+    for (int x = 0; x < N; ++x)
+    {
+        grid[0][x] = TILE_FILLED;
+        grid[M - 1][x] = TILE_FILLED;
+    }
+    for (int y = 0; y < M; ++y)
+    {
+        grid[y][0] = TILE_FILLED;
+        grid[y][N - 1] = TILE_FILLED;
+    }
 
     x1 = 10; y1 = 0; dx1 = 0; dy1 = 0;
     x2 = N - 11; y2 = 0; dx2 = 0; dy2 = 0;
-
     p1Alive = (p1 != nullptr);
     p2Alive = (gameMode == 2 && p2 != nullptr);
+    p1HasTrail = false;
+    p2HasTrail = false;
 
-    for (int i = 0; i < enemyCount; i++)
+    for (int i = 0; i < enemyCount; ++i)
         enemies[i] = Enemy();
 
     freezeActive = false;
-    frozenPlayer = 0;
     freezeTimer = 0.f;
-
-    gameRunning = true;
-    gameTime = 0.f;
+    frozenPlayer = 0;
     timer = 0.f;
+    gameRunning = true;
 
-    if (p1) p1->resetForNewGame();
-    if (p2) p2->resetForNewGame();
-}
-
-/* ========================= EVENT ========================== */
-
-void GameState::handleEvent(sf::Event& e)
-{
-    if (e.type == sf::Event::KeyPressed)
+    if (!preserveProgress)
     {
-        if (e.key.code == sf::Keyboard::Escape)
-        {
-            if (gameMode == 1)
-                game.changeState(new SinglePlayerMenuState(game, data));
-            else
-                game.changeState(new MultiplayerMenuState(game, data));
-            return;
-        }
+        gameTime = 0.f;
+        level = 1;
+        if (p1) p1->resetForNewGame();
+        if (p2) p2->resetForNewGame();
     }
 }
 
-/* ========================= SAFE INPUT ========================== */
+void GameState::applyLoadedState(const SaveGameRecord& record)
+{
+    gameMode = record.gameMode;
+    level = record.level;
+    enemyCount = record.enemyCount;
+    targetCapturePercent = record.targetCapturePercent;
+
+    x1 = record.x1; y1 = record.y1; dx1 = record.dx1; dy1 = record.dy1;
+    x2 = record.x2; y2 = record.y2; dx2 = record.dx2; dy2 = record.dy2;
+
+    p1Alive = (record.p1Alive != 0);
+    p2Alive = (record.p2Alive != 0);
+    p1HasTrail = (record.p1HasTrail != 0);
+    p2HasTrail = (record.p2HasTrail != 0);
+
+    if (p1)
+    {
+        p1->score = record.p1Score;
+        p1->powerUps = record.p1PowerUps;
+        p1->bonusCount = record.p1BonusCount;
+        p1->bonusThreshold = record.p1BonusThreshold;
+        p1->nextPowerupScore = record.p1NextPowerupScore;
+    }
+    if (p2)
+    {
+        p2->score = record.p2Score;
+        p2->powerUps = record.p2PowerUps;
+        p2->bonusCount = record.p2BonusCount;
+        p2->bonusThreshold = record.p2BonusThreshold;
+        p2->nextPowerupScore = record.p2NextPowerupScore;
+    }
+
+    freezeActive = (record.freezeActive != 0);
+    freezeTimer = record.freezeTimer;
+    frozenPlayer = record.frozenPlayer;
+    delay = 0.04f;
+    gameTime = record.gameTime;
+    enemyMoveSteps = (data.difficulty == 2) ? 2 : 1;
+    if (level >= 3) enemyMoveSteps += 1;
+    if (enemyMoveSteps > 3) enemyMoveSteps = 3;
+    gameRunning = true;
+    timer = 0.f;
+
+    for (int i = 0; i < 10; ++i)
+    {
+        enemies[i].x = record.enemyX[i];
+        enemies[i].y = record.enemyY[i];
+        enemies[i].dx = record.enemyDx[i];
+        enemies[i].dy = record.enemyDy[i];
+    }
+
+    for (int y = 0; y < M; ++y)
+        for (int x = 0; x < N; ++x)
+            grid[y][x] = record.grid[y][x];
+
+    setStatusMessage("Loaded save: " + record.saveID, sf::Color::Green);
+}
+
+void GameState::setStatusMessage(const std::string& message, const sf::Color& color)
+{
+    statusText.setString(message);
+    statusText.setFillColor(color);
+    statusTimer = 3.f;
+}
+
+void GameState::handleEvent(sf::Event& event)
+{
+    if (event.type != sf::Event::KeyPressed)
+        return;
+
+    if (event.key.code == sf::Keyboard::Escape)
+    {
+        if (gameMode == 1)
+            game.changeState(new SinglePlayerMenuState(game, data));
+        else
+            game.changeState(new MultiplayerMenuState(game, data));
+        return;
+    }
+
+    if (event.key.code == sf::Keyboard::Space)
+        activatePowerUp(p1, 1);
+    else if (event.key.code == sf::Keyboard::RControl || event.key.code == sf::Keyboard::RShift)
+        activatePowerUp(p2, 2);
+    else if (event.key.code == sf::Keyboard::F5 && gameMode == 1)
+        saveCurrentGame();
+}
+
+void GameState::activatePowerUp(Player* player, int playerCode)
+{
+    if (!player || player->powerUps <= 0 || freezeActive || !gameRunning)
+        return;
+
+    freezeActive = true;
+    freezeTimer = 3.f;
+    frozenPlayer = 0;
+    --player->powerUps;
+    setStatusMessage(player->username + " froze the enemies!", sf::Color::Cyan);
+}
+
+void GameState::saveCurrentGame()
+{
+    if (!p1)
+        return;
+
+    SaveGameRecord record;
+    record.saveID = generateSaveID(p1->username);
+    record.username = p1->username;
+    record.savedAtEpoch = static_cast<long long>(std::time(nullptr));
+    record.gameMode = gameMode;
+    record.level = level;
+    record.enemyCount = enemyCount;
+    record.targetCapturePercent = targetCapturePercent;
+    record.x1 = x1; record.y1 = y1; record.dx1 = dx1; record.dy1 = dy1;
+    record.x2 = x2; record.y2 = y2; record.dx2 = dx2; record.dy2 = dy2;
+    record.p1Alive = p1Alive ? 1 : 0;
+    record.p2Alive = p2Alive ? 1 : 0;
+    record.p1HasTrail = p1HasTrail ? 1 : 0;
+    record.p2HasTrail = p2HasTrail ? 1 : 0;
+    record.p1Score = p1 ? p1->score : 0;
+    record.p1PowerUps = p1 ? p1->powerUps : 0;
+    record.p1BonusCount = p1 ? p1->bonusCount : 0;
+    record.p1BonusThreshold = p1 ? p1->bonusThreshold : 10;
+    record.p1NextPowerupScore = p1 ? p1->nextPowerupScore : 50;
+    record.p2Score = p2 ? p2->score : 0;
+    record.p2PowerUps = p2 ? p2->powerUps : 0;
+    record.p2BonusCount = p2 ? p2->bonusCount : 0;
+    record.p2BonusThreshold = p2 ? p2->bonusThreshold : 10;
+    record.p2NextPowerupScore = p2 ? p2->nextPowerupScore : 50;
+    record.freezeActive = freezeActive ? 1 : 0;
+    record.freezeTimer = freezeTimer;
+    record.frozenPlayer = frozenPlayer;
+    record.delay = delay;
+    record.gameTime = gameTime;
+
+    for (int i = 0; i < 10; ++i)
+    {
+        record.enemyX[i] = enemies[i].x;
+        record.enemyY[i] = enemies[i].y;
+        record.enemyDx[i] = enemies[i].dx;
+        record.enemyDy[i] = enemies[i].dy;
+    }
+
+    for (int y = 0; y < M; ++y)
+        for (int x = 0; x < N; ++x)
+            record.grid[y][x] = grid[y][x];
+
+    if (saveGameToDisk(record))
+        setStatusMessage("Game saved. Open Load Saved Game to resume from the list.", sf::Color::Green);
+    else
+        setStatusMessage("Could not save the game.", sf::Color::Red);
+}
 
 void GameState::handlePlayerInput()
 {
-    if (p1Alive && !(freezeActive && frozenPlayer == 1))
+    if (p1Alive)
     {
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  dx1 = -1, dy1 = 0;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) dx1 = 1, dy1 = 0;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    dx1 = 0, dy1 = -1;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))  dx1 = 0, dy1 = 1;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  { dx1 = -1; dy1 = 0; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) { dx1 = 1; dy1 = 0; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    { dx1 = 0; dy1 = -1; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))  { dx1 = 0; dy1 = 1; }
     }
 
-    if (p2Alive && !(freezeActive && frozenPlayer == 2))
+    if (p2Alive)
     {
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) dx2 = -1, dy2 = 0;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) dx2 = 1, dy2 = 0;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) dx2 = 0, dy2 = -1;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) dx2 = 0, dy2 = 1;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) { dx2 = -1; dy2 = 0; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D) || sf::Keyboard::isKeyPressed(sf::Keyboard::G)) { dx2 = 1; dy2 = 0; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W) || sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) { dx2 = 0; dy2 = -1; }
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S) || sf::Keyboard::isKeyPressed(sf::Keyboard::X)) { dx2 = 0; dy2 = 1; }
     }
 }
-
-/* ============================ UPDATE ============================= */
 
 void GameState::update(float dt)
 {
@@ -160,6 +346,12 @@ void GameState::update(float dt)
 
     gameTime += dt;
     timer += dt;
+    if (statusTimer > 0.f)
+    {
+        statusTimer -= dt;
+        if (statusTimer <= 0.f)
+            statusText.setString("");
+    }
 
     if (freezeActive)
     {
@@ -172,8 +364,7 @@ void GameState::update(float dt)
     }
 
     handlePlayerInput();
-
-    if (timer > delay)
+    if (timer >= delay)
     {
         stepSimulation();
         timer = 0.f;
@@ -182,46 +373,20 @@ void GameState::update(float dt)
     updateHud();
 }
 
-/* ============================================================= */
-
-inline void clampPos(int& x, int max)
-{
-    if (x < 0) x = 0;
-    if (x >= max) x = max - 1;
-}
-
-/* ====================== STEP SIMULATION ====================== */
-
-void GameState::stepSimulation()
-{
-    movePlayers();
-    checkPlayerCollisions();
-
-    if (!freezeActive)
-    {
-        moveEnemies();
-        checkEnemyTrailCollisions();
-    }
-
-    checkEnemyPlayerCollisions();
-    markTrails();
-    checkGameEnd();
-}
-
-/* ===================== MOVE ========================== */
-
 void GameState::movePlayers()
 {
     if (p1Alive)
     {
-        x1 += dx1; y1 += dy1;
+        x1 += dx1;
+        y1 += dy1;
         clampPos(x1, N);
         clampPos(y1, M);
     }
 
     if (p2Alive)
     {
-        x2 += dx2; y2 += dy2;
+        x2 += dx2;
+        y2 += dy2;
         clampPos(x2, N);
         clampPos(y2, M);
     }
@@ -229,27 +394,74 @@ void GameState::movePlayers()
 
 void GameState::moveEnemies()
 {
-    for (int i = 0; i < enemyCount; i++)
-        enemies[i].move();
+    for (int step = 0; step < enemyMoveSteps; ++step)
+    {
+        for (int i = 0; i < enemyCount; ++i)
+            enemies[i].move();
+    }
 }
 
-/* ====================== SAFE CHECKS ======================= */
+float GameState::enemyRotationDegrees(const Enemy& enemy) const
+{
+    return enemy.visualRotation();
+}
 
-//void GameState::checkEnemyPlayerCollisions()
-//{
-//    for (int i = 0; i < enemyCount; i++)
-//    {
-//        int gx = enemies[i].x / ts;
-//        int gy = enemies[i].y / ts;
-//        clampPos(gx, N);
-//        clampPos(gy, M);
-//
-//        if (p1Alive && gx == x1 && gy == y1)
-//            p1Alive = false;
-//        if (p2Alive && gx == x2 && gy == y2)
-//            p2Alive = false;
-//    }
-//}
+void GameState::markTrails()
+{
+    if (p1Alive && grid[y1][x1] == TILE_EMPTY)
+    {
+        grid[y1][x1] = TILE_P1_TRAIL;
+        p1HasTrail = true;
+    }
+    if (p2Alive && grid[y2][x2] == TILE_EMPTY)
+    {
+        grid[y2][x2] = TILE_P2_TRAIL;
+        p2HasTrail = true;
+    }
+}
+
+void GameState::checkPlayerCollisions()
+{
+    if (p1Alive)
+    {
+        int tile = grid[y1][x1];
+        if (tile == TILE_P1_TRAIL || tile == TILE_P2_TRAIL)
+            p1Alive = false;
+    }
+
+    if (p2Alive)
+    {
+        int tile = grid[y2][x2];
+        if (tile == TILE_P1_TRAIL || tile == TILE_P2_TRAIL)
+            p2Alive = false;
+    }
+
+    if (gameMode == 2 && p1Alive && p2Alive && x1 == x2 && y1 == y2)
+    {
+        int tile = grid[y1][x1];
+        if (tile == TILE_EMPTY)
+        {
+            p1Alive = false;
+            p2Alive = false;
+        }
+    }
+}
+
+void GameState::checkEnemyTrailCollisions()
+{
+    for (int i = 0; i < enemyCount; ++i)
+    {
+        int gx = enemies[i].x / ts;
+        int gy = enemies[i].y / ts;
+        clampPos(gx, N);
+        clampPos(gy, M);
+
+        if (grid[gy][gx] == TILE_P1_TRAIL)
+            p1Alive = false;
+        if (grid[gy][gx] == TILE_P2_TRAIL)
+            p2Alive = false;
+    }
+}
 
 void GameState::checkEnemyPlayerCollisions()
 {
@@ -257,224 +469,452 @@ void GameState::checkEnemyPlayerCollisions()
     {
         int gx = enemies[i].x / ts;
         int gy = enemies[i].y / ts;
-
-        // Make absolutely sure we never go out of bounds
-        clampGridPos(gx, gy);
-
-        // Just compare with player tile positions
-        if (p1Alive && gx == x1 && gy == y1)
-            p1Alive = false;
-
-        if (gameMode == 2 && p2Alive && gx == x2 && gy == y2)
-            p2Alive = false;
-    }
-}
-
-
-void GameState::checkEnemyTrailCollisions()
-{
-    for (int i = 0; i < enemyCount; i++)
-    {
-        int gx = enemies[i].x / ts;
-        int gy = enemies[i].y / ts;
         clampPos(gx, N);
         clampPos(gy, M);
 
-        int tile = grid[gy][gx];
-        if (tile == TILE_P1_TRAIL)
+        if (p1Alive && gx == x1 && gy == y1)
             p1Alive = false;
-        else if (tile == TILE_P2_TRAIL)
+        if (p2Alive && gx == x2 && gy == y2)
             p2Alive = false;
     }
 }
 
-/* ====================== PLAYER-PLAYER ====================== */
-
-void GameState::checkPlayerCollisions()
+void GameState::awardTilesToPlayer(Player* player, int tiles)
 {
-    int t1 = p1Alive ? grid[y1][x1] : TILE_FILLED;
-    int t2 = p2Alive ? grid[y2][x2] : TILE_FILLED;
-
-    if (gameMode == 2 && p1Alive && p2Alive && x1 == x2 && y1 == y2)
-    {
-        if (t1 == TILE_EMPTY && t2 == TILE_EMPTY)
-            p1Alive = p2Alive = false;
-        else if (t1 == TILE_EMPTY)
-            p1Alive = false;
-        else if (t2 == TILE_EMPTY)
-            p2Alive = false;
-    }
-
-    if (p1Alive && (t1 == TILE_P1_TRAIL || t1 == TILE_P2_TRAIL))
-        p1Alive = false;
-    if (p2Alive && (t2 == TILE_P1_TRAIL || t2 == TILE_P2_TRAIL))
-        p2Alive = false;
-}
-
-/* ================== TRAILS ================== */
-
-void GameState::markTrails()
-{
-    if (p1Alive && grid[y1][x1] == TILE_EMPTY)
-        grid[y1][x1] = TILE_P1_TRAIL;
-
-    if (p2Alive && grid[y2][x2] == TILE_EMPTY)
-        grid[y2][x2] = TILE_P2_TRAIL;
-}
-
-/* ===================== GAME END ======================= */
-
-void GameState::checkGameEnd()
-{
-    // Single-player ends when P1 dies.
-    // Multiplayer ends when BOTH die.
-    if (!p1Alive && (gameMode == 1 || !p2Alive))
-    {
-        gameRunning = false;
-
-        // ---- Decide winner code: 0 = tie, 1 = P1, 2 = P2 ----
-        int winner = 0;
-
-        if (gameMode == 2 && p1 && p2)
-        {
-            if (p1->score > p2->score)      winner = 1;
-            else if (p2->score > p1->score) winner = 2;
-            else                             winner = 0;
-        }
-        else
-        {
-            // single player: treat P1 as "winner"
-            winner = 1;
-        }
-
-        // ---- Update stats safely (no strings here) ----
-        if (p1) p1->totalPoints += p1->score;
-        if (p2) p2->totalPoints += p2->score;
-
-        // update highScore
-        if (p1 && p1->score > data.highScore) data.highScore = p1->score;
-        if (p2 && p2->score > data.highScore) data.highScore = p2->score;
-
-        // leaderboard (top-10)
-        if (p1) data.leaderboard.updateWithPlayer(*p1);
-        if (p2) data.leaderboard.updateWithPlayer(*p2);
-        data.leaderboard.saveToFile("leaderboard.txt");
-
-        // ---- Leave this state and go to MatchResultState ----
-        // VERY IMPORTANT: do this *last* and then immediately return.
-        game.changeState(new MatchResultState(game, data, winner));
+    if (!player || tiles <= 0)
         return;
-    }
-}
 
-
-/* ===================== HUD ======================= */
-
-void GameState::updateHud()
-{
-    std::ostringstream ss;
-
-    if (p1)
-        ss << "P1: " << p1->username << "  Score: " << p1->score;
-    else
-        ss << "P1: N/A";
-
-    p1Hud.setString(ss.str());
-
-    if (gameMode == 2)
+    int multiplier = 1;
+    if (tiles > player->bonusThreshold)
     {
-        std::ostringstream ss2;
-        if (p2)
-            ss2 << "P2: " << p2->username << "  Score: " << p2->score;
-        else
-            ss2 << "P2: N/A";
-
-        p2Hud.setString(ss2.str());
-        float width = N * ts;
-        auto r = p2Hud.getLocalBounds();
-        p2Hud.setPosition(width - 10 - r.width, 5);
+        ++player->bonusCount;
+        multiplier = 2;
+        if (player->bonusCount >= 3)
+            player->bonusThreshold = 5;
+        if (player->bonusCount >= 5 && tiles > 5)
+            multiplier = 4;
     }
 
-    std::ostringstream tss;
-    tss << "Time: " << int(gameTime);
-    timerText.setString(tss.str());
+    player->updateScore(tiles * multiplier);
 }
 
-/* ==================== RENDER =============================== */
-
-void GameState::render(sf::RenderWindow& window)
+void GameState::handleRegionClosureIfNeeded()
 {
-    // ----- draw grid using tiles.png -----
+    bool p1Closed = p1Alive && p1HasTrail && grid[y1][x1] == TILE_FILLED;
+    bool p2Closed = p2Alive && p2HasTrail && grid[y2][x2] == TILE_FILLED;
+
+    if (p1Closed || p2Closed)
+        applyRegionClosure(p1Closed, p2Closed);
+}
+
+void GameState::applyRegionClosure(bool p1Closed, bool p2Closed)
+{
+    int beforeCount = 0;
+    for (int y = 0; y < M; ++y)
+        for (int x = 0; x < N; ++x)
+            if (grid[y][x] == TILE_FILLED)
+                ++beforeCount;
+
+    for (int i = 0; i < enemyCount; ++i)
+        drop(enemies[i].y / ts, enemies[i].x / ts);
+
     for (int y = 0; y < M; ++y)
     {
         for (int x = 0; x < N; ++x)
         {
-            int v = grid[y][x];
-            if (v == TILE_EMPTY)
-                continue;
-
-            // Always reset colour first so old tint doesn’t leak
-            tileSprite.setColor(sf::Color::White);
-
-            if (v == TILE_FILLED)
-            {
-                // normal land tile
-                tileSprite.setTextureRect(sf::IntRect(0, 0, ts, ts));
-            }
-            else if (v == TILE_P1_TRAIL)
-            {
-                tileSprite.setTextureRect(sf::IntRect(54, 0, ts, ts));
-                tileSprite.setColor(sf::Color::Yellow);   // P1 trail
-            }
-            else if (v == TILE_P2_TRAIL)
-            {
-                tileSprite.setTextureRect(sf::IntRect(54, 0, ts, ts));
-                tileSprite.setColor(sf::Color::Cyan);     // P2 trail
-            }
-
-            tileSprite.setPosition(static_cast<float>(x * ts),
-                static_cast<float>(y * ts));
-            window.draw(tileSprite);
+            if (grid[y][x] == -1)
+                grid[y][x] = TILE_EMPTY;
+            else if (grid[y][x] == TILE_EMPTY || grid[y][x] == TILE_P1_TRAIL || grid[y][x] == TILE_P2_TRAIL)
+                grid[y][x] = TILE_FILLED;
         }
     }
 
-    // ----- draw players as coloured tiles -----
-    tileSprite.setTextureRect(sf::IntRect(36, 0, ts, ts)); // player tile
+    int afterCount = 0;
+    for (int y = 0; y < M; ++y)
+        for (int x = 0; x < N; ++x)
+            if (grid[y][x] == TILE_FILLED)
+                ++afterCount;
+
+    int captured = afterCount - beforeCount;
+    if (p1Closed && p2Closed)
+    {
+        int splitA = captured / 2;
+        awardTilesToPlayer(p1, splitA);
+        awardTilesToPlayer(p2, captured - splitA);
+        setStatusMessage("Both players captured territory!", sf::Color::Green);
+    }
+    else if (p1Closed)
+    {
+        awardTilesToPlayer(p1, captured);
+        setStatusMessage((p1 ? p1->username : std::string("P1")) + " captured " + std::to_string(captured) + " tiles.", sf::Color::Green);
+    }
+    else if (p2Closed)
+    {
+        awardTilesToPlayer(p2, captured);
+        setStatusMessage((p2 ? p2->username : std::string("P2")) + " captured " + std::to_string(captured) + " tiles.", sf::Color::Green);
+    }
+
+    if (p1Closed)
+    {
+        p1HasTrail = false;
+        dx1 = dy1 = 0;
+    }
+    if (p2Closed)
+    {
+        p2HasTrail = false;
+        dx2 = dy2 = 0;
+    }
+
+    maybeAdvanceLevel();
+}
+
+int GameState::calculateCapturedPercent() const
+{
+    int filled = 0;
+    for (int y = 0; y < M; ++y)
+        for (int x = 0; x < N; ++x)
+            if (grid[y][x] == TILE_FILLED)
+                ++filled;
+
+    return (filled * 100) / (M * N);
+}
+
+void GameState::maybeAdvanceLevel()
+{
+    if (calculateCapturedPercent() < targetCapturePercent)
+        return;
+
+    if (level < 5)
+    {
+        ++level;
+        if (enemyCount < 10)
+            ++enemyCount;
+        if (data.difficulty == 2 && level >= 3 && enemyMoveSteps < 3)
+            ++enemyMoveSteps;
+        if (targetCapturePercent < 85)
+            targetCapturePercent += 3;
+        resetBoard(true);
+        setStatusMessage("Level up! Welcome to level " + std::to_string(level), sf::Color::Magenta);
+    }
+    else
+    {
+        setStatusMessage("Maximum level reached. Keep scoring!", sf::Color::Magenta);
+    }
+}
+
+void GameState::stepSimulation()
+{
+    movePlayers();
+    checkPlayerCollisions();
+
+    if (!freezeActive)
+        moveEnemies();
+
+    checkEnemyTrailCollisions();
+    checkEnemyPlayerCollisions();
+    markTrails();
+    handleRegionClosureIfNeeded();
+    checkGameEnd();
+}
+
+void GameState::checkGameEnd()
+{
+    bool shouldEnd = false;
+    int winner = 0;
+
+    if (gameMode == 1)
+    {
+        if (!p1Alive)
+        {
+            shouldEnd = true;
+            winner = 0;
+        }
+    }
+    else
+    {
+        if (!p1Alive || !p2Alive)
+        {
+            shouldEnd = true;
+            if (p1Alive && !p2Alive) winner = 1;
+            else if (p2Alive && !p1Alive) winner = 2;
+            else if (p1 && p2)
+            {
+                if (p1->score > p2->score) winner = 1;
+                else if (p2->score > p1->score) winner = 2;
+                else winner = 0;
+            }
+        }
+    }
+
+    if (!shouldEnd)
+        return;
+
+    gameRunning = false;
+
+    if (p1 && p1->score > p1->highScore)
+        p1->highScore = p1->score;
+    if (p2 && p2->score > p2->highScore)
+        p2->highScore = p2->score;
+
+    if (p1 && p1->highScore > data.highScore)
+        data.highScore = p1->highScore;
+    if (p2 && p2->highScore > data.highScore)
+        data.highScore = p2->highScore;
+
+    if (gameMode == 2 && p1 && p2)
+    {
+        if (data.matchmakingActive && winner == 0)
+            winner = (p1->totalPoints >= p2->totalPoints) ? 1 : 2;
+
+        if (winner == 1)
+        {
+            ++p1->wins;
+            ++p2->losses;
+            data.lastWinner = p1;
+        }
+        else if (winner == 2)
+        {
+            ++p2->wins;
+            ++p1->losses;
+            data.lastWinner = p2;
+        }
+        else
+        {
+            data.lastWinner = nullptr;
+        }
+    }
+
+    data.leaderboard.updateWithPlayer(*p1);
+    if (p2)
+        data.leaderboard.updateWithPlayer(*p2);
+    data.leaderboard.saveToFile("leaderboard.txt");
+    saveUsersToFile(data);
+
+    game.changeState(new MatchResultState(game, data, winner, gameMode));
+}
+
+void GameState::updateHud()
+{
+    ui::Palette palette = ui::getPalette(data.inventory ? data.inventory->getCurrentThemeID() : 1);
+    std::ostringstream p1ss;
+    p1ss << "P1 " << (p1 ? p1->username : std::string("N/A"))
+         << "  Score: " << (p1 ? p1->score : 0)
+         << "  Power-ups: " << (p1 ? p1->powerUps : 0);
+    p1Hud.setString(p1ss.str());
+    p1Hud.setFillColor(palette.player1);
+
+    if (gameMode == 2)
+    {
+        std::ostringstream p2ss;
+        p2ss << "P2 " << (p2 ? p2->username : std::string("N/A"))
+             << "  Score: " << (p2 ? p2->score : 0)
+             << "  Power-ups: " << (p2 ? p2->powerUps : 0);
+        p2Hud.setString(p2ss.str());
+        p2Hud.setFillColor(palette.player2);
+    }
+    else
+    {
+        p2Hud.setString("");
+    }
+
+    std::ostringstream tss;
+    tss << "Level: " << level
+        << "  Captured: " << calculateCapturedPercent() << "%"
+        << "  Target: " << targetCapturePercent << "%"
+        << "  Time: " << static_cast<int>(gameTime);
+    if (freezeActive)
+        tss << "  Freeze: " << static_cast<int>(freezeTimer + 0.99f) << 's';
+    timerText.setString(tss.str());
+    timerText.setFillColor(palette.textPrimary);
+}
+
+void GameState::render(sf::RenderWindow& window)
+{
+    ui::Palette palette = ui::getPalette(data.inventory ? data.inventory->getCurrentThemeID() : 1);
+    ui::drawBackdrop(window, palette, gameTime * 0.25f);
+
+    sf::FloatRect boardRect(0.f, 0.f, static_cast<float>(N * ts), static_cast<float>(M * ts));
+    sf::VertexArray boardBg(sf::Quads, 4);
+    boardBg[0].position = sf::Vector2f(boardRect.left, boardRect.top);
+    boardBg[1].position = sf::Vector2f(boardRect.left + boardRect.width, boardRect.top);
+    boardBg[2].position = sf::Vector2f(boardRect.left + boardRect.width, boardRect.top + boardRect.height);
+    boardBg[3].position = sf::Vector2f(boardRect.left, boardRect.top + boardRect.height);
+    boardBg[0].color = ui::brighten(palette.boardBack, 8);
+    boardBg[1].color = ui::brighten(palette.boardBack, 6);
+    boardBg[2].color = ui::darken(palette.boardBack, 4);
+    boardBg[3].color = ui::darken(palette.boardBack, 10);
+    window.draw(boardBg);
+
+    sf::RectangleShape gridLine;
+    gridLine.setFillColor(ui::withAlpha(palette.boardGrid, 60));
+    for (int x = 0; x <= N; ++x)
+    {
+        gridLine.setPosition(static_cast<float>(x * ts), 0.f);
+        gridLine.setSize(sf::Vector2f(1.f, static_cast<float>(M * ts)));
+        window.draw(gridLine);
+    }
+    for (int y = 0; y <= M; ++y)
+    {
+        gridLine.setPosition(0.f, static_cast<float>(y * ts));
+        gridLine.setSize(sf::Vector2f(static_cast<float>(N * ts), 1.f));
+        window.draw(gridLine);
+    }
+
+    sf::RectangleShape outer(sf::Vector2f(static_cast<float>(ts), static_cast<float>(ts)));
+    sf::RectangleShape inner(sf::Vector2f(static_cast<float>(ts - 6), static_cast<float>(ts - 6)));
+    sf::RectangleShape shine(sf::Vector2f(static_cast<float>(ts - 10), static_cast<float>(ts - 10)));
+    sf::RectangleShape edge;
+    edge.setFillColor(sf::Color::Transparent);
+
+    for (int y = 0; y < M; ++y)
+    {
+        for (int x = 0; x < N; ++x)
+        {
+            int tile = grid[y][x];
+            if (tile == TILE_EMPTY)
+                continue;
+
+            float px = static_cast<float>(x * ts);
+            float py = static_cast<float>(y * ts);
+            outer.setPosition(px, py);
+            inner.setPosition(px + 3.f, py + 3.f);
+            shine.setPosition(px + 5.f, py + 5.f);
+
+            if (tile == TILE_FILLED)
+            {
+                outer.setSize(sf::Vector2f(static_cast<float>(ts), static_cast<float>(ts)));
+                inner.setSize(sf::Vector2f(static_cast<float>(ts - 6), static_cast<float>(ts - 6)));
+                shine.setSize(sf::Vector2f(static_cast<float>(ts - 10), static_cast<float>(ts - 10)));
+                outer.setFillColor(palette.tileFilledOuter);
+                inner.setFillColor(palette.tileFilledInner);
+                shine.setFillColor(ui::withAlpha(ui::brighten(palette.tileFilledInner, 28), 150));
+                window.draw(outer);
+                window.draw(inner);
+                window.draw(shine);
+
+                bool topOpen = (y == 0 || grid[y - 1][x] != TILE_FILLED);
+                bool leftOpen = (x == 0 || grid[y][x - 1] != TILE_FILLED);
+                bool bottomOpen = (y == M - 1 || grid[y + 1][x] != TILE_FILLED);
+                bool rightOpen = (x == N - 1 || grid[y][x + 1] != TILE_FILLED);
+                edge.setFillColor(palette.tileBorder);
+                if (topOpen)
+                {
+                    edge.setPosition(px, py);
+                    edge.setSize(sf::Vector2f(static_cast<float>(ts), 2.f));
+                    window.draw(edge);
+                }
+                if (leftOpen)
+                {
+                    edge.setPosition(px, py);
+                    edge.setSize(sf::Vector2f(2.f, static_cast<float>(ts)));
+                    window.draw(edge);
+                }
+                edge.setFillColor(ui::darken(palette.tileFilledOuter, 18));
+                if (bottomOpen)
+                {
+                    edge.setPosition(px, py + static_cast<float>(ts - 2));
+                    edge.setSize(sf::Vector2f(static_cast<float>(ts), 2.f));
+                    window.draw(edge);
+                }
+                if (rightOpen)
+                {
+                    edge.setPosition(px + static_cast<float>(ts - 2), py);
+                    edge.setSize(sf::Vector2f(2.f, static_cast<float>(ts)));
+                    window.draw(edge);
+                }
+            }
+            else if (tile == TILE_P1_TRAIL || tile == TILE_P2_TRAIL)
+            {
+                sf::Color outerColor = (tile == TILE_P1_TRAIL) ? palette.trail1Outer : palette.trail2Outer;
+                sf::Color innerColor = (tile == TILE_P1_TRAIL) ? palette.trail1Inner : palette.trail2Inner;
+                outer.setSize(sf::Vector2f(static_cast<float>(ts - 4), static_cast<float>(ts - 4)));
+                outer.setPosition(px + 2.f, py + 2.f);
+                outer.setFillColor(ui::withAlpha(outerColor, 165));
+                inner.setSize(sf::Vector2f(static_cast<float>(ts - 8), static_cast<float>(ts - 8)));
+                inner.setPosition(px + 4.f, py + 4.f);
+                inner.setFillColor(innerColor);
+                shine.setSize(sf::Vector2f(static_cast<float>(ts - 12), static_cast<float>(ts - 12)));
+                shine.setPosition(px + 6.f, py + 6.f);
+                shine.setFillColor(ui::withAlpha(ui::brighten(innerColor, 35), 170));
+                window.draw(outer);
+                window.draw(inner);
+                window.draw(shine);
+            }
+        }
+    }
+
+    auto drawPlayerMarker = [&](int gx, int gy, const sf::Color& color)
+    {
+        sf::RectangleShape shadow(sf::Vector2f(static_cast<float>(ts - 2), static_cast<float>(ts - 2)));
+        shadow.setPosition(static_cast<float>(gx * ts + 2), static_cast<float>(gy * ts + 2));
+        shadow.setFillColor(ui::withAlpha(sf::Color::Black, 90));
+        window.draw(shadow);
+
+        sf::RectangleShape body(sf::Vector2f(static_cast<float>(ts - 4), static_cast<float>(ts - 4)));
+        body.setPosition(static_cast<float>(gx * ts + 1), static_cast<float>(gy * ts + 1));
+        body.setFillColor(color);
+        body.setOutlineThickness(2.f);
+        body.setOutlineColor(ui::brighten(color, 36));
+        window.draw(body);
+
+        sf::RectangleShape core(sf::Vector2f(static_cast<float>(ts - 10), static_cast<float>(ts - 10)));
+        core.setPosition(static_cast<float>(gx * ts + 5), static_cast<float>(gy * ts + 5));
+        core.setFillColor(ui::withAlpha(ui::brighten(color, 55), 220));
+        window.draw(core);
+    };
 
     if (p1Alive)
-    {
-        tileSprite.setColor(sf::Color::Yellow);
-        tileSprite.setPosition(static_cast<float>(x1 * ts),
-            static_cast<float>(y1 * ts));
-        window.draw(tileSprite);
-    }
-
+        drawPlayerMarker(x1, y1, palette.player1);
     if (gameMode == 2 && p2Alive)
-    {
-        tileSprite.setColor(sf::Color::Green);
-        tileSprite.setPosition(static_cast<float>(x2 * ts),
-            static_cast<float>(y2 * ts));
-        window.draw(tileSprite);
-    }
+        drawPlayerMarker(x2, y2, palette.player2);
 
-    // ----- draw enemies using enemy.png -----
     for (int i = 0; i < enemyCount; ++i)
     {
-        enemySprite.setPosition(static_cast<float>(enemies[i].x),
-            static_cast<float>(enemies[i].y));
-        window.draw(enemySprite);
+        if (enemyTextureLoaded)
+        {
+            enemySprite.setColor(palette.enemy);
+            enemySprite.setPosition(static_cast<float>(enemies[i].x), static_cast<float>(enemies[i].y));
+            enemySprite.setRotation(enemies[i].visualRotation());
+            window.draw(enemySprite);
+        }
+        else
+        {
+            sf::CircleShape enemyGlow(static_cast<float>(ts) / 2.0f);
+            enemyGlow.setOrigin(enemyGlow.getRadius(), enemyGlow.getRadius());
+            enemyGlow.setPosition(static_cast<float>(enemies[i].x), static_cast<float>(enemies[i].y));
+            enemyGlow.setFillColor(ui::withAlpha(palette.enemy, 90));
+            window.draw(enemyGlow);
+
+            sf::CircleShape enemyShape(static_cast<float>(ts) / 2.8f, 3);
+            enemyShape.setOrigin(enemyShape.getRadius(), enemyShape.getRadius());
+            enemyShape.setPosition(static_cast<float>(enemies[i].x), static_cast<float>(enemies[i].y));
+            enemyShape.setRotation(enemies[i].visualRotation());
+            enemyShape.setFillColor(palette.enemy);
+            enemyShape.setOutlineThickness(2.f);
+            enemyShape.setOutlineColor(ui::brighten(palette.enemy, 40));
+            window.draw(enemyShape);
+        }
     }
 
-    // ----- HUD -----
+    sf::RectangleShape hudStrip(sf::Vector2f(static_cast<float>(N * ts), 58.f));
+    hudStrip.setPosition(0.f, 0.f);
+    hudStrip.setFillColor(ui::withAlpha(palette.panelFill, 170));
+    hudStrip.setOutlineThickness(0.f);
+    window.draw(hudStrip);
+
+    if (!statusText.getString().isEmpty())
+    {
+        sf::RectangleShape statusBox(sf::Vector2f(static_cast<float>(N * ts - 20), 24.f));
+        statusBox.setPosition(10.f, static_cast<float>(M * ts - 28));
+        statusBox.setFillColor(ui::withAlpha(palette.panelFill, 190));
+        statusBox.setOutlineThickness(1.f);
+        statusBox.setOutlineColor(ui::withAlpha(palette.panelOutline, 180));
+        window.draw(statusBox);
+    }
+
     window.draw(p1Hud);
     if (gameMode == 2)
         window.draw(p2Hud);
     window.draw(timerText);
-
-    // (If you want a text game-over overlay, you can re-enable it later)
-    // if (!gameRunning)
-    // {
-    //     window.draw(gameOverSprite);
-    //     window.draw(gameOverText);
-    // }
+    window.draw(statusText);
 }

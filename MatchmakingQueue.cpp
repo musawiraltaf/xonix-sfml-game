@@ -25,6 +25,17 @@ bool MatchmakingQueue::canCreateMatch() const
     return (size >= 2);
 }
 
+
+bool MatchmakingQueue::containsPlayer(Player* player) const
+{
+    for (int i = 0; i < size; ++i)
+    {
+        if (arr[i].player == player)
+            return true;
+    }
+    return false;
+}
+
 // -------------------- Heap helpers (max-heap) --------------------
 
 // Maintain max-heap: parent.priority >= children.priority
@@ -77,9 +88,8 @@ void MatchmakingQueue::push(Player* player, int priority)
     if (!player)
         return;
 
-    if (size >= MAX_WAITING)
+    if (size >= MAX_WAITING || containsPlayer(player))
     {
-        // Queue full: ignore extra players for now
         return;
     }
 

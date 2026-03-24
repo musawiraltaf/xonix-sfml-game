@@ -1,4 +1,4 @@
-mkk 0 0
-M11111 0 0
-musawir 0 1468
-M22222 106 53
+khan 625 345
+altaf 2542 776
+musawir 1690 564
+kharal 4774 1874

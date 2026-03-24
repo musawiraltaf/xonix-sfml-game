@@ -5,91 +5,81 @@
 #include "Enemy.h"
 #include "GameLogic.h"
 #include "Player.h"
+#include "SaveGame.h"
 
 class GameState : public State
 {
 public:
-    // mode: 1 = single player, 2 = local co-op
-    GameState(Game& game, GameData& data, int mode);
+    GameState(Game& game, GameData& data, int mode, const SaveGameRecord* loadedRecord = nullptr);
 
-    virtual void handleEvent(sf::Event& event) override;
-    virtual void update(float dt) override;
-    virtual void render(sf::RenderWindow& window) override;
+    void handleEvent(sf::Event& event) override;
+    void update(float dt) override;
+    void render(sf::RenderWindow& window) override;
+
 private:
-    // --------- mode / players ----------
-    int     gameMode;      // 1 = single, 2 = co-op
-    Player* p1;            // data.currentPlayer
-    Player* p2;            // data.coopPlayer (only if co-op)
+    int gameMode;
+    Player* p1;
+    Player* p2;
 
-    // --------- player positions / movement ----------
-    int x1, y1, dx1, dy1;  // P1 (grid coords)
-    int x2, y2, dx2, dy2;  // P2 (grid coords)
+    int x1, y1, dx1, dy1;
+    int x2, y2, dx2, dy2;
 
     bool p1Alive;
     bool p2Alive;
+    bool p1HasTrail;
+    bool p2HasTrail;
 
-    // --------- enemies ----------
     Enemy enemies[10];
-    int   enemyCount;
+    int enemyCount;
+    int level;
+    int targetCapturePercent;
 
-    // --------- game flow ----------
-    bool  gameRunning;     // false when game over
-    float timer;           // step timer
-    float delay;           // step interval (e.g. 0.07s)
-    float gameTime;        // total elapsed time
+    bool gameRunning;
+    float timer;
+    float delay;
+    float gameTime;
 
-    // --------- power-up / freeze ----------
-    bool  freezeActive;
+    bool freezeActive;
     float freezeTimer;
-    // 0 = none frozen, 1 = P1 frozen, 2 = P2 frozen
-    int   frozenPlayer;
+    int frozenPlayer;
 
-    int   tilesCapturedThisMove;
-
-    // --------- UI / HUD ----------
     sf::Font font;
     sf::Text p1Hud;
     sf::Text p2Hud;
     sf::Text timerText;
-    sf::Text gameOverText;
+    sf::Text statusText;
 
-    // --------- graphics: textures & sprites ----------
-    sf::Texture tileTexture;
     sf::Texture enemyTexture;
-    sf::Texture gameOverTexture;
+    bool enemyTextureLoaded;
+    sf::Sprite enemySprite;
+    float statusTimer;
+    int enemyMoveSteps;
 
-    sf::Sprite  tileSprite;
-    sf::Sprite  enemySprite;
-    sf::Sprite  gameOverSprite;
-
-    float enemySpinAngle;  // for spinning enemies
-
-
-private:
-    void resetBoard();
+    void configureDifficulty();
+    void resetBoard(bool preserveProgress = false);
+    void applyLoadedState(const SaveGameRecord& record);
     void updateHud();
+    void setStatusMessage(const std::string& message, const sf::Color& color = sf::Color::White);
 
-    void handlePowerUpEvent(const sf::Event& event);
     void handlePlayerInput();
+    void activatePowerUp(Player* player, int playerCode);
+    void saveCurrentGame();
 
     void stepSimulation();
     void movePlayers();
     void moveEnemies();
+    float enemyRotationDegrees(const Enemy& enemy) const;
+    void markTrails();
 
     void handleRegionClosureIfNeeded();
     void applyRegionClosure(bool p1Closed, bool p2Closed);
+    void awardTilesToPlayer(Player* player, int tiles);
 
     void checkPlayerCollisions();
     void checkEnemyTrailCollisions();
-
-    // NEW
-    bool p1HasTrail;
-    bool p2HasTrail;
-
-    void checkEnemyPlayerCollisions();          // <--- we'll define this
-    void awardTilesToPlayer(Player* player, int tiles);
-
-    void markTrails();
+    void checkEnemyPlayerCollisions();
     void checkGameEnd();
-};
 
+    int calculateCapturedPercent() const;
+    void maybeAdvanceLevel();
+};

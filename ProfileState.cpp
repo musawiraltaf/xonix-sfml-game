@@ -2,90 +2,112 @@
 #include "Game.h"
 #include "GameData.h"
 #include "MainMenuState.h"
-#include "GameLogic.h"     // for N, M, ts
+#include "GameLogic.h"
+#include "UserDataIO.h"
+#include "UIStyle.h"
+
 #include <sstream>
 
 ProfileState::ProfileState(Game& game, GameData& data)
     : State(game, data)
 {
-    font.loadFromFile("ariblk.ttf");
-
-    // --- Title ---
-    title.setFont(font);
+    title.setFont(ui::headingFont());
     title.setCharacterSize(32);
-    title.setFillColor(sf::Color::White);
     title.setString("Player Profile");
+    ui::centerText(title, sf::FloatRect(42.f, 26.f, 636.f, 42.f));
 
-    // Center title horizontally
-    float winWidth = static_cast<float>(N * ts);
-    sf::FloatRect tr = title.getLocalBounds();
-    title.setPosition(
-        (winWidth - tr.width) / 2.f - tr.left,
-        40.f
-    );
+    leftTitle.setFont(ui::bodyFont());
+    leftTitle.setCharacterSize(18);
+    leftTitle.setPosition(72.f, 102.f);
+    leftTitle.setString("Profile Summary");
 
-    // --- Body text (stats) ---
-    body.setFont(font);
-    body.setCharacterSize(22);
-    body.setFillColor(sf::Color(220, 220, 220));
-    body.setPosition(80.f, 120.f);
+    leftBody.setFont(ui::bodyFont());
+    leftBody.setCharacterSize(16);
+    leftBody.setPosition(72.f, 134.f);
 
-    // --- Helper text at bottom ---
-    helper.setFont(font);
-    helper.setCharacterSize(18);
-    helper.setFillColor(sf::Color(180, 180, 180));
-    helper.setString("ESC = Back to Main Menu");
-    helper.setPosition(80.f, static_cast<float>(M * ts) - 50.f);
+    rightTitle.setFont(ui::bodyFont());
+    rightTitle.setCharacterSize(18);
+    rightTitle.setPosition(404.f, 102.f);
+    rightTitle.setString("Current Session");
+
+    rightBody.setFont(ui::bodyFont());
+    rightBody.setCharacterSize(16);
+    rightBody.setPosition(404.f, 134.f);
+
+    helper.setFont(ui::bodyFont());
+    helper.setCharacterSize(14);
+    helper.setString("ESC returns to the main menu.");
+    helper.setPosition(72.f, 382.f);
 
     rebuildText();
 }
 
 void ProfileState::rebuildText()
 {
-    std::ostringstream oss;
-
     if (!data.currentPlayer)
     {
-        oss << "No player is currently logged in.\n\n"
-            << "Login to see your profile statistics.";
-    }
-    else
-    {
-        const Player& p = *data.currentPlayer;
-
-        oss << "Username: " << p.username << "\n"
-            << "Total Points: " << p.totalPoints << "\n"
-            << "High Score:  " << p.highScore << "\n"
-            << "Wins:        " << p.wins << "\n"
-            << "Losses:      " << p.losses << "\n";
-
-        // Session info (current run)
-        oss << "Current Session:\n"
-            << "  Score:    " << p.score << "\n"
-            << "  Power-ups: " << p.powerUps << "\n";
+        leftBody.setString("No player is currently signed in.");
+        rightBody.setString("");
+        return;
     }
 
-    body.setString(oss.str());
+    const Player& p = *data.currentPlayer;
+    int idx = findPlayerPointerIndex(data, data.currentPlayer);
+    int friendCount = data.friends.getFriendCount(idx);
+    int pendingCount = data.friends.getPendingCount(idx);
+
+    std::ostringstream left;
+    left << "Username: " << p.username << "\n";
+    left << "Total Points: " << p.totalPoints << "\n";
+    left << "High Score: " << p.highScore << "\n";
+    left << "Wins: " << p.wins << "\n";
+    left << "Losses: " << p.losses << "\n";
+    left << "Friends: " << friendCount << "\n";
+    left << "Pending Requests: " << pendingCount << "\n";
+    left << "Theme: " << (data.inventory ? data.inventory->getCurrentThemeName() : std::string("Inkforged"));
+    leftBody.setString(left.str());
+
+    std::ostringstream right;
+    right << "Score: " << p.score << "\n";
+    right << "Power-ups: " << p.powerUps << "\n";
+    right << "Bonus Count: " << p.bonusCount << "\n";
+    right << "Bonus Threshold: " << p.bonusThreshold << "\n";
+    right << "Next Power-up At: " << p.nextPowerupScore;
+    rightBody.setString(right.str());
+
+    ui::wrapText(leftBody, 260.f);
+    ui::wrapText(rightBody, 200.f);
 }
 
 void ProfileState::handleEvent(sf::Event& event)
 {
-    if (event.type == sf::Event::KeyPressed &&
-        event.key.code == sf::Keyboard::Escape)
-    {
-        // Back to main menu
+    if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape)
         game.changeState(new MainMenuState(game, data));
-    }
 }
 
-void ProfileState::update(float /*dt*/)
+void ProfileState::update(float)
 {
-    // Nothing animated for now
 }
 
 void ProfileState::render(sf::RenderWindow& window)
 {
-    window.draw(title);
-    window.draw(body);
+    ui::Palette palette = ui::getPalette(data.inventory ? data.inventory->getCurrentThemeID() : 1);
+    ui::drawBackdrop(window, palette, 0.f);
+    ui::drawPanel(window, sf::FloatRect(42.f, 20.f, 636.f, 396.f), palette, true);
+    ui::drawHeader(window, title, nullptr, palette);
+
+    leftTitle.setFillColor(palette.accent);
+    rightTitle.setFillColor(palette.accent);
+    leftBody.setFillColor(palette.textPrimary);
+    rightBody.setFillColor(palette.textPrimary);
+    helper.setFillColor(palette.textSecondary);
+
+    ui::drawPanel(window, sf::FloatRect(58.f, 92.f, 292.f, 270.f), palette, false, 4.f);
+    ui::drawPanel(window, sf::FloatRect(388.f, 92.f, 234.f, 168.f), palette, false, 4.f);
+
+    window.draw(leftTitle);
+    window.draw(leftBody);
+    window.draw(rightTitle);
+    window.draw(rightBody);
     window.draw(helper);
 }

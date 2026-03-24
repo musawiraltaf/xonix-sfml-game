@@ -1,0 +1,27 @@
+BUILD NOTES
+===========
+1. Open this folder in Visual Studio as a CMake project.
+2. Make sure SFML is available at C:\SFML or update CMakeLists.txt to your real SFML path.
+3. After build, copy the matching SFML DLLs beside xonix.exe.
+4. The game saves single-player runs with F5 and now lists saved games inside the Load Saved Game screen.
+
+WHAT THIS PASS FIXES
+====================
+1. Save and load flow
+   - Saving still works with F5 during single-player.
+   - Load Saved Game now shows the current player's saved games in a list.
+   - Each save entry shows its timestamp, level, and score.
+   - The player no longer has to type a long save ID manually.
+
+2. Text layout fixes
+   - Tightened the settings layout so all text stays inside the panel.
+   - Reworked the profile screen into separate summary and session sections.
+   - Reworked the friends screen so helper text stays inside the frame.
+   - Shortened or clipped theme descriptions so they no longer spill outside the cards.
+   - Cleaned up the tournament room wording and kept all separators in plain ASCII.
+
+3. Pointer pass
+   - Reduced the pointer size and trail so it is less intrusive over text.
+
+4. Tournament wording
+   - Removed the more technical bracket wording in the UI text and kept the labels plain.
