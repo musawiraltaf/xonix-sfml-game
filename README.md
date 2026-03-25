@@ -57,7 +57,7 @@ A modernised **Xonix-inspired arcade game** built in **C++** with **SFML** and o
 ## Folder structure
 
 ```text
-Xonix_GitHub_Public/
+xonix-sfml-game/
 ├── CMakeLists.txt
 ├── README.md
 ├── .gitignore
@@ -98,9 +98,8 @@ If CMake cannot find SFML automatically, point `SFML_DIR` to your SFML CMake pac
 
 This project uses **Arial Black** (`ariblk.ttf`) for parts of the UI.
 
-The font file is **not included** in this repository. Before running the game, place a valid local copy of `ariblk.ttf` in the project root, or update the font-loading path in the source code to use another font available on your system.
+Due to licensing constraints, the font file is **not included** in this repository. Before running the game, place a valid local copy of `ariblk.ttf` in the project root, or update the font-loading path in the source code to use another font available on your system.
 
-This keeps the public repository clean and avoids redistributing the font file.
 
 ## Runtime data files
 
@@ -113,22 +112,3 @@ The game can generate the following files at runtime:
 - `save_<id>.txt`
 
 These are intentionally ignored in `.gitignore` so local gameplay data does not clutter the repository.
-
-## Notes for GitHub presentation
-
-This cleaned version intentionally removes:
-
-- Visual Studio cache files
-- build / debug output
-- generated executables and `.pdb` files
-- local save files and user data
-- backup source files such as `.bak`
-- the bundled UI font file for safer public distribution
-
-## Possible future improvements
-
-- Replace Arial Black with an open-source font for easier setup
-- Add screenshots or a short gameplay GIF to the README
-- Make SFML discovery fully portable across Windows / Linux setups
-- Add a release build workflow and packaged binaries
-- Expand tournament logic beyond the current local 4-player bracket flow
