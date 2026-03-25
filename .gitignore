@@ -1,0 +1,56 @@
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# CMake / Ninja / build output
+build/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+build.ninja
+Testing/
+*.dir/
+
+# Binaries and debug artifacts
+*.exe
+*.dll
+*.ilk
+*.pdb
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dylib
+
+# Logs and generated metadata
+*.log
+*.sqlite
+*.vsidx
+VSInheritEnvironments.txt
+
+# Local runtime data
+users.txt
+friends.txt
+leaderboard.txt
+user_themes.txt
+save_*.txt
+highscore.txt
+
+# Optional local asset not tracked publicly
+ariblk.ttf
+
+# Backup / temporary files
+*.bak
+*.tmp
+*.temp
+*~
